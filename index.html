@@ -28,6 +28,10 @@
     .muted{color:var(--muted); font-size:12px}
     .toast{position:fixed; right:16px; bottom:16px; padding:10px 12px; background:#0f1b36; border:1px solid var(--border); border-radius:10px; opacity:0; transform:translateY(8px); transition:.2s}
     .toast.show{opacity:1; transform:translateY(0)}
+    .loader{display:none; position:fixed; inset:0; background:rgba(5,10,20,.35); place-items:center; z-index:50}
+    .loader.show{display:grid}
+    .spinner{width:46px; height:46px; border:3px solid rgba(255,255,255,.25); border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
@@ -63,36 +67,40 @@
         </table>
       </div>
 
-      <div class="muted" style="margin-top:8px">Tip: puedes usar lector de código de barras en el buscador.</div>
+      <div class="muted" style="margin-top:8px">Tip: puedes usar un lector de código de barras en el buscador.</div>
     </div>
   </div>
 
   <div id="toast" class="toast">Hecho</div>
+  <div id="loader" class="loader"><div class="spinner"></div></div>
 
 <script>
-/** 1) Pega aquí tu URL de Apps Script (la de /exec) **/
-const API_BASE https://script.google.com/macros/s/AKfycbwJ-eeXnCBEzki1m3FxSHsPec3QAp9qq54Ipbcsxl19l3ewm8Zphtw-wxAAnRJhjwaK8g/exec?view=api&fn=stock&v=999
+/** ================== CONFIG ================== */
+/** ⛳️ Pega aquí tu URL de Apps Script (termina en /exec) */
+const API_BASE = https://script.google.com/macros/s/AKfycbzT0cg3aouWDfzm69vNwtheAWwFxuRZ-DWGRcHY-z-HVeILYaYeNFJdmFQ_0eeM5Yb59g/exec
 
-/** Estado **/
+/** ============== ESTADO & UTILIDADES ============== */
 let DATA = [];
 
-/** Utilidades **/
 function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg||'Hecho'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+function showLoader(v){ document.getElementById('loader').classList.toggle('show', !!v); }
 
-/** 2) Cargar stock desde tu API (GET) **/
+/** ============== CARGAR STOCK (GET) ============== */
 async function cargar(){
   const f=document.getElementById('fecha'); if(f && !f.value) f.value=todayISO();
   try{
+    showLoader(true);
     const res = await fetch(`${API_BASE}?view=api&fn=stock`, { cache:'no-store' });
     const json = await res.json();
-    if(!json.ok) throw new Error(json.error||'Error al cargar stock');
+    if(!json.ok && !Array.isArray(json.items)) throw new Error(json.error||'No se pudo cargar stock');
     DATA = (json.items||[]).sort((a,b)=> (a.sku||'').localeCompare(b.sku||'')); 
     render();
-  }catch(err){ toast(err.message||'No se pudo cargar'); }
+  }catch(err){ toast(err.message||'Error al cargar'); }
+  finally{ showLoader(false); }
 }
 
-/** 3) Pintar tabla **/
+/** ============== PINTAR TABLA ============== */
 function render(){
   const q=(document.getElementById('q').value||'').toLowerCase().trim();
   const tbody=document.querySelector('#tabla tbody');
@@ -117,7 +125,8 @@ function render(){
         <td><input type="number" id="${priceId}" step="0.01" value="${Number(p.precio||0).toFixed(2)}" class="price" oninput="recalc('${qtyId}','${priceId}','${totalId}')"></td>
         <td>${p.ubicacion||''}</td>
         <td>
-          <input type="number" id="${qtyId}" min="1" value="1" class="qty" oninput="recalc('${qtyId}','${priceId}','${totalId}')">
+          <input type="number" id="${qtyId}" min="1" value="1" class="qty" oninput="recalc('${qtyId}','${priceId}','${totalId}')"
+                 onkeydown="if(event.key==='Enter'){vender('${sku}','${qtyId}','${priceId}')}" />
           <span id="${totalId}" class="muted">Total: $${Number(p.precio||0).toFixed(2)}</span>
           <button class="btn" onclick="vender('${sku}','${qtyId}','${priceId}')">Vender</button>
         </td>
@@ -137,7 +146,7 @@ function recalc(qtyId, priceId, totalId){
   const el=document.getElementById(totalId); if(el) el.textContent = `Total: $${total.toFixed(2)}`;
 }
 
-/** 4) Registrar venta (POST) **/
+/** ============== REGISTRAR VENTA (POST) ============== */
 async function vender(sku, qtyId, priceId){
   const cantidad = Number(document.getElementById(qtyId).value||1);
   if(!Number.isFinite(cantidad)||cantidad<=0) return toast('Cantidad inválida');
@@ -151,6 +160,7 @@ async function vender(sku, qtyId, priceId){
   const nota = document.getElementById('nota').value || (cliente ? `Venta a ${cliente}` : 'Venta web');
 
   try{
+    showLoader(true);
     const res = await fetch(API_BASE, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -162,9 +172,11 @@ async function vender(sku, qtyId, priceId){
     });
     const json = await res.json();
     if(!json.ok) throw new Error(json.error||'No se pudo vender');
-    toast(`Venta registrada ($${json.result?.total?.toFixed ? json.result.total.toFixed(2) : json.result.total})`);
-    cargar();
+    const total = (json.result && typeof json.result.total === 'number') ? json.result.total.toFixed(2) : '0.00';
+    toast(`Venta registrada ($${total})`);
+    await cargar();
   }catch(err){ toast(err.message||'Error al vender'); }
+  finally{ showLoader(false); }
 }
 
 document.addEventListener('DOMContentLoaded', cargar);
