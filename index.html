@@ -175,22 +175,45 @@
   }
 
   /* ============== REGISTRAR VENTA (POST simple + fallback GET) ============== */
-  async function vender(sku, qtyId, priceId){
-    const cantidad = Number(document.getElementById(qtyId).value||1);
-    if(!Number.isFinite(cantidad)||cantidad<=0) return toast('Cantidad inválida');
+ <script>
+async function vender(sku, qtyId, priceId){
+  const cantidad = Number(document.getElementById(qtyId).value||1);
+  if(!Number.isFinite(cantidad)||cantidad<=0){ alert('Cantidad inválida'); return; }
 
-    const precioUnit = document.getElementById(priceId).value;
-    const cliente = (document.getElementById('cliente').value||'').trim();
-    const fechaISO = document.getElementById('fecha').value;
-    const descPct = Number(document.getElementById('descPct').value||0);
-    const impPct  = Number(document.getElementById('impPct').value||0);
-    const formaPago = (document.getElementById('pago').value||'');
-    const nota = document.getElementById('nota').value || (cliente ? `Venta a ${cliente}` : 'Venta web');
+  const precioUnit = document.getElementById(priceId).value;
+  const cliente = (document.getElementById('cliente').value||'').trim();
+  const fechaISO = document.getElementById('fecha').value;
+  const descPct = Number(document.getElementById('descPct').value||0);
+  const impPct  = Number(document.getElementById('impPct').value||0);
+  const formaPago = (document.getElementById('pago').value||'');
+  const nota = document.getElementById('nota').value || (cliente ? `Venta a ${cliente}` : 'Venta web');
 
-    let json = null;
+  const payload = { precioUnit, cliente, fechaISO, descPct, impPct, formaPago, nota };
 
-    try{
-      showLoader(true);
+  try{
+    document.getElementById('loader').classList.add('show');
+    const params = new URLSearchParams({
+      view:'api',
+      fn:'registersalev2',   // en minúsculas
+      sku,
+      cantidad: String(cantidad),
+      payload: JSON.stringify(payload)
+    });
+    const res = await fetch(`${window.API_BASE}?${params.toString()}`, { cache:'no-store' });
+    const json = await res.json();
+    if(!json.ok) throw new Error(json.error||'No se pudo vender');
+    const total = (json.result && typeof json.result.total === 'number') ? json.result.total.toFixed(2) : '0.00';
+    alert(`Venta registrada ($${total})`);
+    await cargar();
+  }catch(err){
+    console.error(err);
+    alert(err.message||'Error al vender');
+  }finally{
+    document.getElementById('loader').classList.remove('show');
+  }
+}
+</script>
+
 
       // 1) Intento POST "simple" (sin preflight) -> text/plain
       const res = await fetch(window.API_BASE, {
