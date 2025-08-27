@@ -197,7 +197,7 @@
         method:'POST',
         headers:{ 'Content-Type':'text/plain;charset=utf-8' },
         body: JSON.stringify({
-          action:'registerSaleV2',
+          action:'registersaleV2',
           sku, cantidad,
           payload:{precioUnit, cliente, fechaISO, descPct, impPct, formaPago, nota}
         })
@@ -212,7 +212,7 @@
       try{
         // 2) Fallback GET (requiere ruta GET en doGet - ver nota abajo)
         const params = new URLSearchParams({
-          view:'api', fn:'registerSaleV2',
+          view:'api', fn:'registersaleV2',
           sku, cantidad: String(cantidad),
           payload: JSON.stringify({precioUnit, cliente, fechaISO, descPct, impPct, formaPago, nota})
         });
