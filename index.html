@@ -13,7 +13,7 @@
     body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#0b1220; color:var(--text)}
     .wrap{max-width:1100px; margin:0 auto; padding:20px}
     h1{margin:6px 0 14px; display:flex; gap:10px; align-items:center}
-    .h-actions{margin-left:auto; display:flex; gap:10px}
+    .h-actions{margin-left:auto; display:flex; gap:10px; flex-wrap:wrap}
     .card{background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px}
     .controls{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px}
     input,select,button{padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:#0d1530; color:var(--text); outline:none}
@@ -43,6 +43,7 @@
       <span class="h-actions">
         <a id="btnAdd" class="btn-link" href="#" target="_blank">➕ Agregar stock</a>
         <button class="btn-ghost" onclick="cargar()">🔄 Actualizar</button>
+        <button class="btn" onclick="pdfSemanal()">📄 PDF semanal</button>
       </span>
     </h1>
 
@@ -53,6 +54,8 @@
         <span style="flex:1"></span>
         <label>Cliente: <input id="cliente" placeholder="Nombre del cliente" style="min-width:180px" /></label>
         <label>Fecha: <input id="fecha" type="date" /></label>
+        <!-- (Opcional) Rango hasta para PDF -->
+        <label>Hasta: <input id="fechaHasta" type="date" /></label>
         <label>Desc %: <input id="descPct" type="number" step="0.01" value="0" style="width:90px" /></label>
         <label>Imp %: <input id="impPct" type="number" step="0.01" value="0" style="width:90px" /></label>
         <label>Pago:
@@ -85,12 +88,13 @@
   <!-- ========== SCRIPT ========== -->
   <script>
   /* ================== CONFIG (GLOBAL) ================== */
-  /* 🔗 Cambia estas 2 líneas por tu URL /exec real */
- window.API_BASE = "https://script.google.com/macros/s/AKfycbyCB2ePX6FQ0nhr84OQ_djgmJh-ZLkOQre3KKLjg6h-c_TBRbguNLf2_soO8rB-bkGA-Q/exec";
-  window.ADD_STOCK_URL = "https://script.google.com/macros/s/AKfycbyqsU1RHEkIrVcyWVmArCqEVnQ8TAgohlrkLIebXS-JLDJjHkXeatoB6wjmUo8Hl2XaoQ/exec";
+  /* 🔗 URL de tu Web App (Apps Script /exec) */
+  window.API_BASE = "https://script.google.com/macros/s/AKfycbyCB2ePX6FQ0nhr84OQ_djgmJh-ZLkOQre3KKLjg6h-c_TBRbguNLf2_soO8rB-bkGA-Q/exec";
+  /* 🔗 Para el botón Agregar stock (por ahora misma URL; puedes redirigir a otra vista si quieres) */
+  window.ADD_STOCK_URL = "https://script.google.com/macros/s/AKfycbyCB2ePX6FQ0nhr84OQ_djgmJh-ZLkOQre3KKLjg6h-c_TBRbguNLf2_soO8rB-bkGA-Q/exec";
+
   /* ============== ESTADO & UTILIDADES ============== */
   let DATA = [];
-
   function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
   function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg||'Hecho'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2000); }
   function showLoader(v){ document.getElementById('loader').classList.toggle('show', !!v); }
@@ -105,11 +109,12 @@
   /* ============== CARGAR STOCK (GET) ============== */
   async function cargar(){
     const f=document.getElementById('fecha'); if(f && !f.value) f.value=todayISO();
+    const h=document.getElementById('fechaHasta'); if(h && !h.value) h.value=todayISO();
     try{
       showLoader(true);
       const res = await fetch(`${window.API_BASE}?view=api&fn=stock`, { cache:'no-store' });
       const json = await res.json();
-      if(!json.ok && !Array.isArray(json.items)) throw new Error(json.error||'No se pudo cargar stock');
+      if(!json.ok || !Array.isArray(json.items)) throw new Error(json.error||'No se pudo cargar stock');
       DATA = (json.items||[]).sort((a,b)=> (a.sku||'').localeCompare(b.sku||'')); 
       render();
     }catch(err){ toast(err.message||'Error al cargar'); console.error(err); }
@@ -134,7 +139,6 @@
         const priceId = 'precio_' + sku;
         const totalId = 'total_' + sku;
 
-        // Precio seguro: si no es número válido, dejar vacío
         const precioNum = Number(p.precio);
         const precioVal = Number.isFinite(precioNum) ? precioNum.toFixed(2) : '';
 
@@ -173,7 +177,7 @@
     if(el) el.textContent = `Total: $${total.toFixed(2)}`;
   }
 
-  /* ============== REGISTRAR VENTA (SOLO GET, parámetros planos) ============== */
+  /* ============== REGISTRAR VENTA (GET, parámetros planos) ============== */
   async function vender(sku, qtyId, priceId){
     const cantidad = Number(document.getElementById(qtyId).value||1);
     if(!Number.isFinite(cantidad)||cantidad<=0){ alert('Cantidad inválida'); return; }
@@ -204,11 +208,8 @@
       });
 
       const url = `${window.API_BASE}?${params.toString()}`;
-      console.log('URL Venta GET =>', url);
-
       const res = await fetch(url, { cache:'no-store' });
       const text = await res.text();   // primero como texto por si viene HTML
-      console.log('Respuesta texto =>', text.slice(0,200));
 
       if (text.trim().startsWith('<')) {
         alert('El backend devolvió HTML (no JSON). Verifica view=api y fn=registersalev2 en tu doGet y usa la URL /exec del último deploy.');
@@ -229,8 +230,37 @@
       showLoader(false);
     }
   }
+
+  /* ============== PDF SEMANAL ============== */
+  async function pdfSemanal(){
+    try{
+      showLoader(true);
+
+      // Si quieres pasar rango: usa los 2 inputs de fecha (fecha y fechaHasta)
+      const desde = document.getElementById('fecha')?.value || '';
+      const hasta = document.getElementById('fechaHasta')?.value || '';
+
+      let url = `${window.API_BASE}?view=api&fn=weeklypdf`;
+      if (desde && hasta) {
+        const qp = new URLSearchParams({ start: desde, end: hasta });
+        url += `&${qp.toString()}`;
+      }
+
+      const res = await fetch(url, { cache:'no-store' });
+      const json = await res.json();
+      if(!json.ok) throw new Error(json.error || 'No se pudo generar PDF');
+
+      const link = json.report && json.report.url;
+      if (!link) throw new Error('No se recibió URL del PDF');
+
+      window.open(link, '_blank'); // abre el PDF en nueva pestaña
+    }catch(err){
+      console.error(err);
+      alert(err.message||'Error al generar PDF');
+    }finally{
+      showLoader(false);
+    }
+  }
   </script>
 </body>
 </html>
-
-
