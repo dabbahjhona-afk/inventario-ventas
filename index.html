@@ -12,13 +12,15 @@
     *{box-sizing:border-box}
     body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#0b1220; color:var(--text)}
     .wrap{max-width:1100px; margin:0 auto; padding:20px}
-    h1{margin:6px 0 14px}
+    h1{margin:6px 0 14px; display:flex; gap:10px; align-items:center}
+    .h-actions{margin-left:auto; display:flex; gap:10px}
     .card{background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px}
     .controls{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px}
     input,select,button{padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:#0d1530; color:var(--text); outline:none}
     button{cursor:pointer}
     .btn{background:linear-gradient(180deg,var(--accent) 0%, #436fe0 100%); color:#fff; font-weight:600; border:0}
-    .ghost{background:transparent}
+    .btn-ghost{background:transparent}
+    .btn-link{background:transparent; text-decoration:none; border:1px solid var(--border)}
     table{width:100%; border-collapse:separate; border-spacing:0; border-radius:12px; overflow:hidden; margin-top:8px}
     thead th{position:sticky; top:0; z-index:5; background:#0b142b; color:#b9c6dd; text-align:left; font-size:13px; letter-spacing:.2px; border-bottom:1px solid var(--border); padding:10px 12px}
     tbody td{padding:12px; border-bottom:1px solid var(--border); font-size:14px}
@@ -36,7 +38,14 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>🧾 Ventas (GitHub Pages → Sheets)</h1>
+    <h1>
+      🧾 Ventas (GitHub Pages → Sheets)
+      <span class="h-actions">
+        <a id="btnAdd" class="btn-link" href="#" target="_blank">➕ Agregar stock</a>
+        <button class="btn-ghost" onclick="cargar()">🔄 Actualizar</button>
+      </span>
+    </h1>
+
     <div class="card">
       <!-- Controles superiores -->
       <div class="controls">
@@ -52,7 +61,6 @@
           </select>
         </label>
         <label>Nota: <input id="nota" placeholder="Observaciones (opcional)" style="min-width:220px" /></label>
-        <button class="ghost" onclick="cargar()">🔄 Actualizar</button>
       </div>
 
       <!-- Tabla -->
@@ -75,18 +83,24 @@
   <div id="loader" class="loader"><div class="spinner"></div></div>
 
 <script>
-/** ================== CONFIG ================== */
-/** ⛳️ Pega aquí tu URL de Apps Script (termina en /exec) */
-const API_BASE = https://script.google.com/macros/s/AKfycbzT0cg3aouWDfzm69vNwtheAWwFxuRZ-DWGRcHY-z-HVeILYaYeNFJdmFQ_0eeM5Yb59g/exec
+/* ================== CONFIG ================== */
+/* ⛳️ Pega AQUÍ tus URLs */
+const API_BASE = "Pega_AQUI_TU_URL_EXEC"; https://script.google.com/macros/s/AKfycbzXrgK71KSkroDSzMAzpxyoHHzLg-O_Z08p2EAD_83swag0sUbH0d6TiX5p-CKyPDPCUw/exec?view=ventas       // <- TU Apps Script /exec
+const ADD_STOCK_URL = "https://tusitio.com/admin";https://script.google.com/macros/s/AKfycbwOGZzoBtJITZajflgRcOiYY7T7Btyx5_nIZIxGL3VdcSD6NDFPMhbdTQBIfNESF951/exec // <- a dónde quieres que lleve el botón “Agregar stock”
 
-/** ============== ESTADO & UTILIDADES ============== */
+/* ============== ESTADO & UTILIDADES ============== */
 let DATA = [];
 
 function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg||'Hecho'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
 function showLoader(v){ document.getElementById('loader').classList.toggle('show', !!v); }
 
-/** ============== CARGAR STOCK (GET) ============== */
+/* Inicializa botón de agregar stock */
+document.addEventListener('DOMContentLoaded', ()=>{
+  document.getElementById('btnAdd').href = ADD_STOCK_URL || '#';
+});
+
+/* ============== CARGAR STOCK (GET) ============== */
 async function cargar(){
   const f=document.getElementById('fecha'); if(f && !f.value) f.value=todayISO();
   try{
@@ -100,7 +114,7 @@ async function cargar(){
   finally{ showLoader(false); }
 }
 
-/** ============== PINTAR TABLA ============== */
+/* ============== PINTAR TABLA ============== */
 function render(){
   const q=(document.getElementById('q').value||'').toLowerCase().trim();
   const tbody=document.querySelector('#tabla tbody');
@@ -122,10 +136,12 @@ function render(){
         <td><b>${sku}</b></td>
         <td>${p.nombre||''}</td>
         <td><span class="pill">${Number(p.stock)||0}</span></td>
-        <td><input type="number" id="${priceId}" step="0.01" value="${Number(p.precio||0).toFixed(2)}" class="price" oninput="recalc('${qtyId}','${priceId}','${totalId}')"></td>
+        <td><input type="number" id="${priceId}" step="0.01" value="${Number(p.precio||0).toFixed(2)}" class="price"
+                   oninput="recalc('${qtyId}','${priceId}','${totalId}')"></td>
         <td>${p.ubicacion||''}</td>
         <td>
-          <input type="number" id="${qtyId}" min="1" value="1" class="qty" oninput="recalc('${qtyId}','${priceId}','${totalId}')"
+          <input type="number" id="${qtyId}" min="1" value="1" class="qty"
+                 oninput="recalc('${qtyId}','${priceId}','${totalId}')"
                  onkeydown="if(event.key==='Enter'){vender('${sku}','${qtyId}','${priceId}')}" />
           <span id="${totalId}" class="muted">Total: $${Number(p.precio||0).toFixed(2)}</span>
           <button class="btn" onclick="vender('${sku}','${qtyId}','${priceId}')">Vender</button>
@@ -146,7 +162,7 @@ function recalc(qtyId, priceId, totalId){
   const el=document.getElementById(totalId); if(el) el.textContent = `Total: $${total.toFixed(2)}`;
 }
 
-/** ============== REGISTRAR VENTA (POST) ============== */
+/* ============== REGISTRAR VENTA (POST) ============== */
 async function vender(sku, qtyId, priceId){
   const cantidad = Number(document.getElementById(qtyId).value||1);
   if(!Number.isFinite(cantidad)||cantidad<=0) return toast('Cantidad inválida');
@@ -183,3 +199,4 @@ document.addEventListener('DOMContentLoaded', cargar);
 </script>
 </body>
 </html>
+
