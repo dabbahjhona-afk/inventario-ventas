@@ -85,10 +85,9 @@
   <!-- ========== SCRIPT ========== -->
   <script>
   /* ================== CONFIG (GLOBAL) ================== */
-  /* 🔗 Pega aquí tus URLs reales (terminan en /exec) */
-  window.API_BASE = "https://script.google.com/macros/s/AKfycbyqsU1RHEkIrVcyWVmArCqEVnQ8TAgohlrkLIebXS-JLDJjHkXeatoB6wjmUo8Hl2XaoQ/exec";
+  /* 🔗 Cambia estas 2 líneas por tu URL /exec real */
+ window.API_BASE = "https://script.google.com/macros/s/AKfycbyqsU1RHEkIrVcyWVmArCqEVnQ8TAgohlrkLIebXS-JLDJjHkXeatoB6wjmUo8Hl2XaoQ/exec";
   window.ADD_STOCK_URL = "https://script.google.com/macros/s/AKfycbyqsU1RHEkIrVcyWVmArCqEVnQ8TAgohlrkLIebXS-JLDJjHkXeatoB6wjmUo8Hl2XaoQ/exec";
-
   /* ============== ESTADO & UTILIDADES ============== */
   let DATA = [];
 
@@ -174,93 +173,64 @@
     if(el) el.textContent = `Total: $${total.toFixed(2)}`;
   }
 
-  /* ============== REGISTRAR VENTA (POST simple + fallback GET) ============== */
- <script>
-async function vender(sku, qtyId, priceId){
-  const cantidad = Number(document.getElementById(qtyId).value||1);
-  if(!Number.isFinite(cantidad)||cantidad<=0){ alert('Cantidad inválida'); return; }
+  /* ============== REGISTRAR VENTA (SOLO GET, parámetros planos) ============== */
+  async function vender(sku, qtyId, priceId){
+    const cantidad = Number(document.getElementById(qtyId).value||1);
+    if(!Number.isFinite(cantidad)||cantidad<=0){ alert('Cantidad inválida'); return; }
 
-  const precioUnit = document.getElementById(priceId).value;
-  const cliente = (document.getElementById('cliente').value||'').trim();
-  const fechaISO = document.getElementById('fecha').value;
-  const descPct = Number(document.getElementById('descPct').value||0);
-  const impPct  = Number(document.getElementById('impPct').value||0);
-  const formaPago = (document.getElementById('pago').value||'');
-  const nota = document.getElementById('nota').value || (cliente ? `Venta a ${cliente}` : 'Venta web');
+    const precioUnit = document.getElementById(priceId).value;
+    const cliente = (document.getElementById('cliente').value||'').trim();
+    const fechaISO = document.getElementById('fecha').value;
+    const descPct = Number(document.getElementById('descPct').value||0);
+    const impPct  = Number(document.getElementById('impPct').value||0);
+    const formaPago = (document.getElementById('pago').value||'');
+    const nota = document.getElementById('nota').value || (cliente ? `Venta a ${cliente}` : 'Venta web');
 
-  const payload = { precioUnit, cliente, fechaISO, descPct, impPct, formaPago, nota };
+    try{
+      showLoader(true);
 
-  try{
-    document.getElementById('loader').classList.add('show');
-    const params = new URLSearchParams({
-      view:'api',
-      fn:'registersalev2',   // en minúsculas
-      sku,
-      cantidad: String(cantidad),
-      payload: JSON.stringify(payload)
-    });
-    const res = await fetch(`${window.API_BASE}?${params.toString()}`, { cache:'no-store' });
-    const json = await res.json();
-    if(!json.ok) throw new Error(json.error||'No se pudo vender');
-    const total = (json.result && typeof json.result.total === 'number') ? json.result.total.toFixed(2) : '0.00';
-    alert(`Venta registrada ($${total})`);
-    await cargar();
-  }catch(err){
-    console.error(err);
-    alert(err.message||'Error al vender');
-  }finally{
-    document.getElementById('loader').classList.remove('show');
-  }
-}
-</script>
-
-
-      // 1) Intento POST "simple" (sin preflight) -> text/plain
-      const res = await fetch(window.API_BASE, {
-        method:'POST',
-        headers:{ 'Content-Type':'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action:'registersaleV2',
-          sku, cantidad,
-          payload:{precioUnit, cliente, fechaISO, descPct, impPct, formaPago, nota}
-        })
+      const params = new URLSearchParams({
+        view:'api',
+        fn:'registersalev2',
+        sku,
+        cantidad:String(cantidad),
+        cliente,
+        precioUnit:String(precioUnit),
+        fechaISO,
+        descPct:String(descPct),
+        impPct:String(impPct),
+        formaPago,
+        nota
       });
-      json = await res.json();
 
-      // Si el backend respondió ok=false, lanza para usar fallback
-      if(!json.ok) throw new Error(json.error||'POST no aceptado');
-    }catch(errPost){
-      console.warn('POST falló o no aceptado, usando fallback GET...', errPost);
+      const url = `${window.API_BASE}?${params.toString()}`;
+      console.log('URL Venta GET =>', url);
 
-      try{
-        // 2) Fallback GET (requiere ruta GET en doGet - ver nota abajo)
-        const params = new URLSearchParams({
-          view:'api', fn:'registersaleV2',
-          sku, cantidad: String(cantidad),
-          payload: JSON.stringify({precioUnit, cliente, fechaISO, descPct, impPct, formaPago, nota})
-        });
-        const res2 = await fetch(`${window.API_BASE}?${params.toString()}`, { cache:'no-store' });
-        json = await res2.json();
-      }catch(errGet){
-        console.error(errGet);
-        toast('No se pudo registrar la venta');
-        showLoader(false);
+      const res = await fetch(url, { cache:'no-store' });
+      const text = await res.text();   // primero como texto por si viene HTML
+      console.log('Respuesta texto =>', text.slice(0,200));
+
+      if (text.trim().startsWith('<')) {
+        alert('El backend devolvió HTML (no JSON). Verifica view=api y fn=registersalev2 en tu doGet y usa la URL /exec del último deploy.');
         return;
       }
+
+      const json = JSON.parse(text);
+      if(!json.ok){ alert(json.error || 'No se pudo vender'); return; }
+
+      const total = (json.result && typeof json.result.total === 'number') ? json.result.total.toFixed(2) : '0.00';
+      toast(`Venta registrada ($${total})`);
+      await cargar();
+
+    }catch(err){
+      console.error(err);
+      alert(err.message||'Error al vender');
     }finally{
       showLoader(false);
     }
-
-    if(!json || !json.ok){
-      toast(json && json.error ? json.error : 'No se pudo vender');
-      return;
-    }
-
-    const total = (json.result && typeof json.result.total === 'number') ? json.result.total.toFixed(2) : '0.00';
-    toast(`Venta registrada ($${total})`);
-    await cargar();
   }
   </script>
 </body>
 </html>
+
 
