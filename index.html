@@ -93,16 +93,13 @@
   let DATA = [];
 
   function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-  function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg||'Hecho'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+  function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg||'Hecho'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2000); }
   function showLoader(v){ document.getElementById('loader').classList.toggle('show', !!v); }
 
-  /* Inicializa botón de agregar stock y título para comprobar carga del script */
+  /* Inicializa botón y carga inventario */
   document.addEventListener('DOMContentLoaded', ()=>{
-    // Señal visual de que el script se cargó:
     document.title = "Ventas conectadas ✔️";
-    // Botón
     document.getElementById('btnAdd').href = window.ADD_STOCK_URL || '#';
-    // Cargar inventario
     cargar();
   });
 
@@ -177,7 +174,7 @@
     if(el) el.textContent = `Total: $${total.toFixed(2)}`;
   }
 
-  /* ============== REGISTRAR VENTA (POST) ============== */
+  /* ============== REGISTRAR VENTA (POST simple + fallback GET) ============== */
   async function vender(sku, qtyId, priceId){
     const cantidad = Number(document.getElementById(qtyId).value||1);
     if(!Number.isFinite(cantidad)||cantidad<=0) return toast('Cantidad inválida');
@@ -190,25 +187,57 @@
     const formaPago = (document.getElementById('pago').value||'');
     const nota = document.getElementById('nota').value || (cliente ? `Venta a ${cliente}` : 'Venta web');
 
+    let json = null;
+
     try{
       showLoader(true);
+
+      // 1) Intento POST "simple" (sin preflight) -> text/plain
       const res = await fetch(window.API_BASE, {
         method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
+        headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+        body: JSON.stringify({
           action:'registerSaleV2',
           sku, cantidad,
           payload:{precioUnit, cliente, fechaISO, descPct, impPct, formaPago, nota}
         })
       });
-      const json = await res.json();
-      if(!json.ok) throw new Error(json.error||'No se pudo vender');
-      const total = (json.result && typeof json.result.total === 'number') ? json.result.total.toFixed(2) : '0.00';
-      toast(`Venta registrada ($${total})`);
-      await cargar();
-    }catch(err){ toast(err.message||'Error al vender'); console.error(err); }
-    finally{ showLoader(false); }
+      json = await res.json();
+
+      // Si el backend respondió ok=false, lanza para usar fallback
+      if(!json.ok) throw new Error(json.error||'POST no aceptado');
+    }catch(errPost){
+      console.warn('POST falló o no aceptado, usando fallback GET...', errPost);
+
+      try{
+        // 2) Fallback GET (requiere ruta GET en doGet - ver nota abajo)
+        const params = new URLSearchParams({
+          view:'api', fn:'registerSaleV2',
+          sku, cantidad: String(cantidad),
+          payload: JSON.stringify({precioUnit, cliente, fechaISO, descPct, impPct, formaPago, nota})
+        });
+        const res2 = await fetch(`${window.API_BASE}?${params.toString()}`, { cache:'no-store' });
+        json = await res2.json();
+      }catch(errGet){
+        console.error(errGet);
+        toast('No se pudo registrar la venta');
+        showLoader(false);
+        return;
+      }
+    }finally{
+      showLoader(false);
+    }
+
+    if(!json || !json.ok){
+      toast(json && json.error ? json.error : 'No se pudo vender');
+      return;
+    }
+
+    const total = (json.result && typeof json.result.total === 'number') ? json.result.total.toFixed(2) : '0.00';
+    toast(`Venta registrada ($${total})`);
+    await cargar();
   }
   </script>
 </body>
 </html>
+
